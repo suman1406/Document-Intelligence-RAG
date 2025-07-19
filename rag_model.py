@@ -58,7 +58,8 @@ print("Cross-encoder model for re-ranking loaded.")
 
 # --- Define Parsers and Prompts ---
 query_parser = JsonOutputParser(pydantic_object=GeneratedQueries)
-decision_parser = JsonOutputParser(pydantic_object=Decision)
+# Use the new comprehensive decision model for the parser
+decision_parser = JsonOutputParser(pydantic_object=FinalResponse)
 
 query_generation_prompt = PromptTemplate(
     template="You are an expert query analyst. Analyze the user's question and generate a set of more effective queries to improve document retrieval.\n1. **Sub-Queries:** Decompose the query into smaller questions.\n2. **Hypothetical Answer (HyDE):** Create an ideal answer.\n3. **Keywords:** Extract key terms and synonyms.\n\n**User Query:** \"{query}\"\n\n{format_instructions}",
@@ -66,19 +67,16 @@ query_generation_prompt = PromptTemplate(
     partial_variables={"format_instructions": query_parser.get_format_instructions()},
 )
 
-# **REASONING UPGRADE 5.0: Prompt to handle specific vs. general definitions**
+# **PROMPT UPGRADE: New prompt reflecting the detailed adjudicator persona and complex JSON output**
 synthesis_prompt = PromptTemplate(
     template=(
-        "You are a senior insurance claims adjudicator. Your task is to provide the most helpful, definitive answer possible based on the provided policy context and a user's query. "
-        "Apply general rules and exceptions meticulously. If you find a specific definition (e.g., 'Hospital (for International Cover)'), be aware that a general 'Standard Definition' for the same term might also exist in the context and you should present both. "
-        "If multiple definitions exist, present both clearly. "
-        "**Crucially, if a user's query is vague (e.g., 'is therapy covered?'), do not simply ask for more information.** Your primary goal is to avoid a 'Further Information Required' decision. "
-        "Instead, do the following: "
-        "1. **Assume the Best-Case Scenario:** Base your answer on the most comprehensive coverage available in the context (e.g., assume they have the 'Imperial Plus Plan' with international benefits if mentioned). "
-        "2. **Provide a Concrete Decision:** Give a clear 'Approved' or 'Denied' decision based on this assumption. "
-        "3. **State Your Assumption Clearly:** In the justification, explicitly state the assumptions you made (e.g., 'Assuming you have the Imperial Plus Plan and the treatment is post-hospitalization...'). "
-        "4. **Explain Alternatives:** Briefly mention how the decision might change under different circumstances (e.g., '...this would not be covered under a domestic-only plan.'). "
-        "Respond *only* in a valid JSON format.\n\n"
+        "You are an expert policy and legal adjudicator AI. Your job is to analyze the provided document context and return a structured understanding of how the policy applies to a specific query. "
+        "Your responsibilities:\n"
+        "1. **Query Interpretation:** Extract structured case facts from the query (age, procedure, location, etc.). If the query is absent or ambiguous, treat it as a request to enumerate all possible covered or excluded cases.\n"
+        "2. **Clause Extraction & Mapping:** Retrieve and reference every relevant clause, definition, or rule.\n"
+        "3. **Outcome Generation:** Provide a definitive decision when possible. If not, provide all plausible outcomes, each with associated clauses, clear assumptions, and specific decision logic.\n"
+        "4. **Total Transparency:** Always list all assumptions, amounts, limits, and waiting periods exactly as stated. Never ignore edge cases.\n\n"
+        "Return your answer **strictly in the specified JSON format**.\n\n"
         "**Policy Context:**\n---\n{context}\n---\n\n"
         "**User Query:** \"{query}\"\n\n"
         "{format_instructions}"
