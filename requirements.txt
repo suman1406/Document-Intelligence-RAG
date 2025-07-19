@@ -3,3 +3,7 @@ langchain-google-genai
 langchain-community
 faiss-cpu
 python-dotenv
+streamlit
+langchain_experimental
+pydantic>=2.0.0
+google-generative-ai

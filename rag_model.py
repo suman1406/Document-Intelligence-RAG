@@ -1,9 +1,6 @@
 # rag_backend.py
 
 import os
-import json
-import hashlib
-import joblib
 from typing import List, Optional
 
 # LangChain Imports
@@ -69,13 +66,18 @@ query_generation_prompt = PromptTemplate(
     partial_variables={"format_instructions": query_parser.get_format_instructions()},
 )
 
-# **REASONING UPGRADE 3.0: Added Summary Instruction**
+# **REASONING UPGRADE 5.0: Prompt to handle specific vs. general definitions**
 synthesis_prompt = PromptTemplate(
     template=(
-        "You are a senior insurance claims adjudicator. Your task is to make a decision based on the provided policy clauses and a user's claim query. "
-        "First, create a concise, one-to-two-line 'summary' of your final decision. Then, provide the detailed justification and other fields. "
-        "Carefully apply any general rules, conditions, or exceptions to all items they govern. "
-        "If the user's query is vague, identify the most common scenario, make an assumption, and state it clearly in the detailed justification. "
+        "You are a senior insurance claims adjudicator. Your task is to provide the most helpful, definitive answer possible based on the provided policy context and a user's query. "
+        "Apply general rules and exceptions meticulously. If you find a specific definition (e.g., 'Hospital (for International Cover)'), be aware that a general 'Standard Definition' for the same term might also exist in the context and you should present both. "
+        "If multiple definitions exist, present both clearly. "
+        "**Crucially, if a user's query is vague (e.g., 'is therapy covered?'), do not simply ask for more information.** Your primary goal is to avoid a 'Further Information Required' decision. "
+        "Instead, do the following: "
+        "1. **Assume the Best-Case Scenario:** Base your answer on the most comprehensive coverage available in the context (e.g., assume they have the 'Imperial Plus Plan' with international benefits if mentioned). "
+        "2. **Provide a Concrete Decision:** Give a clear 'Approved' or 'Denied' decision based on this assumption. "
+        "3. **State Your Assumption Clearly:** In the justification, explicitly state the assumptions you made (e.g., 'Assuming you have the Imperial Plus Plan and the treatment is post-hospitalization...'). "
+        "4. **Explain Alternatives:** Briefly mention how the decision might change under different circumstances (e.g., '...this would not be covered under a domestic-only plan.'). "
         "Respond *only* in a valid JSON format.\n\n"
         "**Policy Context:**\n---\n{context}\n---\n\n"
         "**User Query:** \"{query}\"\n\n"
@@ -116,7 +118,10 @@ def create_rag_retriever(file_path: str):
     print(f"    - Loaded and split into {len(chunked_documents)} semantic chunks.")
 
     vectorstore = Chroma.from_documents(documents=chunked_documents, embedding=embedding_model)
-    base_retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
+    
+    # **ROBUSTNESS FIX: Increased 'k' to retrieve more documents before re-ranking**
+    # This increases the chance of capturing all relevant definitions.
+    base_retriever = vectorstore.as_retriever(search_kwargs={"k": 15}) 
     compressor = CrossEncoderReranker(model=cross_encoder_model, top_n=5)
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor, base_retriever=base_retriever
