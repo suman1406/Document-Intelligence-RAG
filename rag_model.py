@@ -1,6 +1,9 @@
 # rag_backend.py
 
 import os
+import json
+import hashlib
+import joblib
 from typing import List, Optional
 
 # LangChain Imports
@@ -29,13 +32,31 @@ class GeneratedQueries(BaseModel):
     hypothetical_answer: str = Field(description="A detailed, hypothetical answer to the original query.")
     keywords: List[str] = Field(description="A list of important keywords and synonyms from the query.")
 
-class Decision(BaseModel):
-    """Pydantic model for the final decision output."""
-    summary: str = Field(description="A concise, one-to-two-line summary of the final decision and its primary reason.")
-    decision: str = Field(description="The final decision: 'Approved', 'Denied', or 'Further Information Required'.")
-    amount: Optional[float] = Field(description="The approved monetary amount, if applicable. Null otherwise.")
-    justification: str = Field(description="A detailed explanation for the decision, citing specific clauses.")
-    clause_references: List[str] = Field(description="List of source clauses supporting the decision.")
+# **PROMPT UPGRADE: New Pydantic models for the detailed, multi-scenario JSON output**
+class ClauseInfo(BaseModel):
+    """Model for a single clause used in a decision."""
+    clause_title: str = Field(description="The title or heading of the relevant clause.")
+    clause_text: str = Field(description="The exact text of the clause that was used for the decision.")
+    matched_terms: List[str] = Field(description="Specific terms from the clause that match the query.")
+
+class Justification(BaseModel):
+    """Model for the detailed justification of a decision."""
+    summary: str = Field(description="A brief summary of why the decision was made.")
+    assumptions: List[str] = Field(description="A list of assumptions made to reach the decision.")
+    clauses_used: List[ClauseInfo] = Field(description="A list of specific clauses that support the decision.")
+    alternate_outcomes: List[str] = Field(description="Potential outcomes if the assumptions were different.")
+
+class DecisionItem(BaseModel):
+    """Model for a single decision scenario."""
+    scenario: str = Field(description="A description of the scenario or inferred case being analyzed.")
+    decision: str = Field(description="The decision for this scenario: 'Approved', 'Denied', 'Needs More Info', etc.")
+    amount: str = Field(description="The applicable amount, described textually or as a number (e.g., '₹100,000' or 'Up to annual limit of ₹5,00,000').")
+    justification: Justification = Field(description="A nested object containing the detailed justification.")
+
+class FinalResponse(BaseModel):
+    """The final, top-level response model containing all decisions."""
+    decisions: List[DecisionItem] = Field(description="A list of all plausible decisions and scenarios.")
+
 
 # --- Initialize Models (globally, as they are heavyweight) ---
 print("✨ Initializing models...")
@@ -117,8 +138,6 @@ def create_rag_retriever(file_path: str):
 
     vectorstore = Chroma.from_documents(documents=chunked_documents, embedding=embedding_model)
     
-    # **ROBUSTNESS FIX: Increased 'k' to retrieve more documents before re-ranking**
-    # This increases the chance of capturing all relevant definitions.
     base_retriever = vectorstore.as_retriever(search_kwargs={"k": 15}) 
     compressor = CrossEncoderReranker(model=cross_encoder_model, top_n=5)
     compression_retriever = ContextualCompressionRetriever(
@@ -153,19 +172,20 @@ def process_claim_query(query: str, retriever, vectorstore):
         final_result['retrieved_context'] = list(unique_docs) # For UI display
         
         if not unique_docs:
-            return {"summary": "Could not find relevant information.", "decision": "Further Information Required", "justification": "No relevant policy clauses found.", "amount": None, "clause_references": [], "grounding_check": "Not Performed"}
+            return {"decisions": [{"scenario": "No Information Found", "decision": "Needs More Info", "amount": "N/A", "justification": {"summary": "No relevant policy clauses could be found to address the query.", "assumptions": [], "clauses_used": [], "alternate_outcomes": []}}]}
 
         # 3. SYNTHESIS
         synthesis_chain = synthesis_prompt | llm | decision_parser
         decision_output = synthesis_chain.invoke({"context": context, "query": query})
         final_result.update(decision_output)
 
-        # 4. Grounding Check
+        # 4. Grounding Check (Applied to all justifications)
         print("    - Performing grounding check...")
         grounding_chain = grounding_prompt | llm | StrOutputParser()
+        all_justifications = ". ".join([d['justification']['summary'] for d in final_result.get('decisions', [])])
         grounding_response = grounding_chain.invoke({
             "context": context,
-            "justification": final_result.get('justification', '')
+            "justification": all_justifications
         })
         final_result['grounding_check'] = grounding_response.strip()
         print(f"    - Grounding Check Result: {final_result['grounding_check']}")
@@ -174,4 +194,4 @@ def process_claim_query(query: str, retriever, vectorstore):
 
     except Exception as e:
         print(f"An error occurred during query processing: {e}")
-        return {"summary": "An error occurred during processing.", "decision": "Error", "justification": str(e), "amount": None, "clause_references": [], "grounding_check": "Failed"}
+        return {"decisions": [{"scenario": "Processing Error", "decision": "Error", "amount": "N/A", "justification": {"summary": str(e), "assumptions": [], "clauses_used": [], "alternate_outcomes": []}}]}
