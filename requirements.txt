@@ -1,9 +1,10 @@
-langchain
-langchain-google-genai
+google-generativeai
 langchain-community
-faiss-cpu
-python-dotenv
-streamlit
-langchain_experimental
-pydantic>=2.0.0
+pypdf
+python-docx
+unstructured
 sentence-transformers
+faiss-cpu
+fastapi
+uvicorn[standard]
+langchain-google-genai
