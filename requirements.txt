@@ -1,15 +1,14 @@
 google-generativeai
+langchain-google-genai
 langchain-community
 langchain-experimental
 pypdf
 python-docx
 unstructured
-sentence-transformers
 faiss-cpu
 fastapi
 uvicorn[standard]
-langchain-google-genai
 tinydb
 pydantic
 PyMuPDF
-python-dotenv
+rank_bm25
