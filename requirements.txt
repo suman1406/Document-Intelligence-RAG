@@ -1,5 +1,6 @@
 google-generativeai
 langchain-community
+langchain-experimental
 pypdf
 python-docx
 unstructured
@@ -8,3 +9,7 @@ faiss-cpu
 fastapi
 uvicorn[standard]
 langchain-google-genai
+tinydb
+pydantic
+PyMuPDF
+python-dotenv

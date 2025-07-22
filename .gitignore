@@ -5,3 +5,5 @@
 /.env
 /old_version
 /rag.ipynb
+/uploaded_documents
+/*.json
