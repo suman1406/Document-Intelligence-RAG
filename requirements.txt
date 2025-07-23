@@ -12,3 +12,4 @@ tinydb
 pydantic
 PyMuPDF
 rank_bm25
+sentence-transformers
