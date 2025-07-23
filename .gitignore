@@ -6,5 +6,5 @@
 /old_version
 /rag.ipynb
 /uploaded_documents
-/*.json
-/__pycache__
+/document_sessions.json
+/__pycache__/
